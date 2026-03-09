@@ -7,6 +7,8 @@ import gzip, os
 from teenygrad.nn import optim
 from teenygrad.helpers import getenv
 
+from teenygrad.helpers import dtypes
+
 def train(model, X_train, Y_train, optim, steps, BS=128, lossfn=lambda out,y: out.sparse_categorical_crossentropy(y),
         transform=lambda x: x, target_transform=lambda x: x, noloss=False):
   Tensor.training = True
@@ -19,7 +21,7 @@ def train(model, X_train, Y_train, optim, steps, BS=128, lossfn=lambda out,y: ou
     # network
     out = model.forward(x) if hasattr(model, 'forward') else model(x)
 
-    loss = lossfn(out, y)
+    loss = lossfn(out, y.cast(dtype=dtypes.int8))
     optim.zero_grad()
     loss.backward()
     if noloss: del loss
@@ -69,11 +71,17 @@ X_train, Y_train, X_test, Y_test = fetch_mnist()
 class TinyConvNet:
   def __init__(self):
     # https://keras.io/examples/vision/mnist_convnet/
+    # Размер kernel (чтобы была 3x3 матрица)
     conv = 3
     #inter_chan, out_chan = 32, 64
+    # Количество входных и выходных каналов
     inter_chan, out_chan = 8, 16   # for speed
+    # Первый слой свёртки, 8 выходных каналов, 1 входной greyscale, ядро 3x3
     self.c1 = Tensor.scaled_uniform(inter_chan,1,conv,conv)
+    # Второй слой свёртки, 16 выходных каналов, 8 входных, ядро 3x3
     self.c2 = Tensor.scaled_uniform(out_chan,inter_chan,conv,conv)
+    # Обычный полносвязный слой, каждый канал 5x5, при умножении получаем кол-во признаков.
+    # 10 это кол-во классов.
     self.l1 = Tensor.scaled_uniform(out_chan*5*5, 10)
 
   def forward(self, x:Tensor):

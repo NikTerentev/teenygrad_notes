@@ -139,6 +139,8 @@ class Tensor:
 
   # ***** creation llop entrypoint *****
 
+  # Возвращает инициализированный тензор с данными, полученными при загрузки через operations (RAND, CONST, EMPTY).
+  # device дефолтный None в teenygrad
   @staticmethod
   def _loadop(op, sz, device:Optional[str]=None, dtype:Optional[DType]=None, arg=None, **kwargs):
     assert isinstance(sz, int), f"cannot create with symbolic size {sz}"
@@ -152,9 +154,14 @@ class Tensor:
   @staticmethod
   def manual_seed(seed=0): Tensor._seed = seed
 
+  # Возвращает Тензор с переданным shape и предзаполненный рандомными весами.
   @staticmethod
   def rand(*shape, **kwargs):
     Tensor._seed += 1
+    # prod - умножение элеменентов Iterable
+    # argfix - приводит к одному виду (если мы передадим просто tuple/list или вложенный list,
+    # он всё равно приведёт к tuple, тем самым мы можем не задумываться об формате данных в shape).
+    # arg - передаём сид (пойдёт на вход генератору рандомных чисел numpy для репродуцируемости).
     return Tensor._loadop(LoadOps.RAND, prod((shape:=argfix(*shape))), arg=Tensor._seed, **kwargs).reshape(shape)
 
   # ***** creation helper functions *****
@@ -197,7 +204,9 @@ class Tensor:
 
   @staticmethod
   def uniform(*shape, low=0.0, high=1.0, **kwargs) -> Tensor:
+    # Достаём тип данных из аргументов (иначе дефолтный)
     dtype = kwargs.pop("dtype", Tensor.default_type)
+    #
     return ((high-low) * Tensor.rand(*shape, **kwargs)).cast(dtype) + low
 
   @staticmethod
@@ -794,7 +803,7 @@ class Tensor:
     loss_mask = Y != ignore_index
     y_counter = Tensor.arange(self.shape[-1], dtype=dtypes.int32, requires_grad=False, device=self.device).unsqueeze(0).expand(Y.numel(), self.shape[-1])
     y = ((y_counter == Y.flatten().reshape(-1, 1)).where(-1.0, 0) * loss_mask.reshape(-1, 1)).reshape(*Y.shape, self.shape[-1])
-    return self.log_softmax().mul(y).sum() / loss_mask.sum()
+    return -self.log_softmax().mul(y).sum() / loss_mask.sum()
 
   # ***** cast ops *****
 
@@ -815,6 +824,9 @@ class Tensor:
   def is_floating_point(self) -> bool: return dtypes.is_float(self.dtype)
 
 # register functions to move between devices
+# Из списка девайсов (в данном проекте только CPU) создаёт методы из метода Tensor.to,
+# где на место девайса подставляется сам девайс.
+# Вместо tensor.to("CPU") вызываем просто tensor.cpu()
 for device in Device._buffers: setattr(Tensor, f"{device.lower()}", partialmethod(Tensor.to, device))
 
 if IMAGE:
